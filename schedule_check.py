@@ -10,9 +10,9 @@ from sportradar import NFL
 from yfpy import Data
 from yfpy.query import YahooFantasySportsQuery
 
+logging.getLogger("yfpy.query").setLevel(logging.INFO)
+logging.getLogger("sportradar").setLevel(logging.WARNING)
 
-logging.getLogger("yfpy.query").setLevel(logging.WARNING)
-logging.getLogger("sportradar").setLevel(logging.ERROR)
 
 # logger = logging.getLogger('schedule_check')
 # logger.setLevel(logging.INFO)
@@ -27,7 +27,6 @@ def get_roster_players(team_id_list):
         'RB': 1.0,
         'WR': 1.0,
         'TE': 1.0,
-        'W/R/T': 1.0,
         'DEF': 1.0,
         'K': 1.0,
         'D': 0.5,
