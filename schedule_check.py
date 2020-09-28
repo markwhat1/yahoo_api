@@ -18,7 +18,7 @@ from sportradar import NFL
 import arrow
 from prettytable import PrettyTable
 
-game_week = 1
+game_week = 3
 
 
 class YFQuery:
@@ -79,7 +79,7 @@ def get_roster_team_counts(team_id_list):
     team_import_dict = dict()
     for team_ID in team_IDs:
         players = yf.get_team_roster_player_info(team_id=team_ID)
-        pos_values = {'QB': 1.5, 'RB': 1.0, 'WR': 1.0, 'TE': 1.0, 'W/R/T': 1.0, 'DEF': 1.0, 'K': 1.0, 'D': 0.5}
+        pos_values = {'QB': 1.0, 'RB': 1.0, 'WR': 1.0, 'TE': 1.0, 'W/R/T': 1.0, 'DEF': 1.0, 'K': 1.0, 'D': 0.5}
         for player in players:
             player = player['player']
             pos = player.selected_position.position
@@ -116,6 +116,8 @@ def get_weekly_schedule(week):
 
         game_dict['game_num'] = game_num
         game_dict['game_time'] = game['scheduled']
+        game_dict['arrow_time'] = arrow.get(game['scheduled'])
+        game_dict['human_time'] = arrow.get(game['scheduled']).to('US/Central').humanize(granularity=["hour"])
         # game_dict['game_utc_offset'] = game['utc_offset']
         game_dict['away_team'] = away
         game_dict['home_team'] = home
@@ -140,18 +142,21 @@ def get_gametime(elem):
     return elem['game_time']
 
 
+def sort_game_list(week_games):
+    return sorted(week_games, key=lambda k: (k['human_time'], -k['values']))
+
+
 for game in weekly_games:
     for team, value in roster_counts.items():
         if team in game['teams']:
             game['values'].append(value)
-            # print(game['values'])
 
 for game in weekly_games:
     game['values'] = sum(game['values'])
     if game['values'] == 0:
         game['values'] = float(0.0)
 
-weekly_games.sort(key=get_value, reverse=True)
+weekly_games = sort_game_list(weekly_games)
 
 x = PrettyTable()
 x.field_names = ['Score', 'Game Time', 'Channel', 'Matchup']
@@ -165,7 +170,7 @@ for game in weekly_games:
     home_team = game['home_team']
     matchup = f'{home_team} vs {away_team}'
     game_time = arrow.get(game['game_time'])
-    game_time_human = game_time.to('US/Central').humanize(granularity=["hour", "minute"])
+    game_time_human = game_time.to('US/Central').humanize(granularity=["hour"])
     broadcast = game['broadcast']
     if game_time > arrow.now():
         x.add_row([score, game_time_human, broadcast, matchup])
