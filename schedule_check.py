@@ -11,8 +11,8 @@ from yfpy import Data
 from yfpy.query import YahooFantasySportsQuery
 
 
-logging.getLogger("yfpy.query").setLevel(logging.INFO)
-logging.getLogger("sportradar").setLevel(logging.WARNING)
+logging.getLogger("yfpy.query").setLevel(logging.WARNING)
+logging.getLogger("sportradar").setLevel(logging.ERROR)
 
 # logger = logging.getLogger('schedule_check')
 # logger.setLevel(logging.INFO)
@@ -96,7 +96,7 @@ def update_current_week(team_obj):
             game_week = str(match.week)
 
 
-def get_weekly_schedule(week):
+def get_weekly_schedule(week=game_week):
     SR_api_key = "8ud4engmjwxzk9gw7up653j8"
     nfl = NFL.NFL(SR_api_key)
     game_list = nfl.get_weekly_schedule(year=2020, nfl_season='REG', nfl_season_week=week).json()
@@ -187,7 +187,6 @@ if __name__ == "__main__":
     game_id = "399"
     game_code = "nfl"
     all_output_as_json = False
-    game_week = 3
     managers = list()
     team_IDs = [3, 4]  # '1', '9']  # 3 = Mark, 4 = Lauren
     # team_IDs = range(1, 11)
@@ -198,20 +197,20 @@ if __name__ == "__main__":
                                  all_output_as_json=all_output_as_json)
 
     # Fetch and combine rosters by team using yfpy
-    all_players = get_roster_players(team_IDs)
+    weekly_players = get_roster_players(team_IDs)
 
     # Fetch weekly NFL scheduled
-    weekly_games = get_weekly_schedule(week=game_week)
+    weekly_games = get_weekly_schedule()
 
     # Assign player position values, sum by team
-    weekly_games = assign_players_to_games(week_games=weekly_games, manager_player_list=all_players)
+    weekly_game_values = assign_players_to_games(week_games=weekly_games, manager_player_list=weekly_players)
 
     # Sum player values by Manager
-    weekly_games = sum_player_values(weekly_games)
+    weekly_game_values = sum_player_values(weekly_game_values)
 
     # Sort list of games by game_time ASC, values DESC
-    weekly_games = sort_game_list(weekly_games)
+    sorted_weekly_games = sort_game_list(weekly_game_values)
 
     # Use PrettyTable to print table of game times
-    table = create_print_table(weekly_games)
+    table = create_print_table(sorted_weekly_games)
     print(table)
