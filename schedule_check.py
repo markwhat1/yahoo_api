@@ -11,7 +11,11 @@ from yfpy import Data
 from yfpy.query import YahooFantasySportsQuery
 
 
-logging.basicConfig(level=logging.INFO)
+logging.getLogger("yfpy.query").setLevel(logging.INFO)
+logging.getLogger("sportradar").setLevel(logging.WARNING)
+
+# logger = logging.getLogger('schedule_check')
+# logger.setLevel(logging.INFO)
 # logging.debug('Script has started.')
 
 
@@ -96,7 +100,6 @@ def get_weekly_schedule(week):
     SR_api_key = "8ud4engmjwxzk9gw7up653j8"
     nfl = NFL.NFL(SR_api_key)
     game_list = nfl.get_weekly_schedule(year=2020, nfl_season='REG', nfl_season_week=week).json()
-    print(game_list)
 
     assert (int(game_list['week']['title']) == int(game_week)), "Week from SportsRadar doesn't match Yahoo"
 
@@ -160,9 +163,6 @@ def create_print_table(game_list):
     x = PrettyTable()
     first_fields = ['Game Time', 'Match', 'Channel']
     x.field_names = [*first_fields, *managers, 'Total']
-    # x.align['Game Time'] = 'l'
-    # x.align['Channel'] = 'c'
-    # x.align['Match'] = 'l'
 
     for item in game_list:
         match = item['away_abbr'] + ' vs. ' + item['home_abbr']
@@ -177,7 +177,6 @@ def create_print_table(game_list):
         row.append(item['Total'])
         if game_time > arrow.now():
             x.add_row(row)
-        print(row)
     return x
 
 
