@@ -1,159 +1,107 @@
 import logging
-import time
+import sys
 
 import arrow
 from prettytable import PrettyTable
 from sportradar import NFL
 from yfpy.query import YahooFantasySportsQuery
-import requests
-from apprise import Apprise
-from markdownify import markdownify
-import html2markdown
-from pushover import Client
-from notifiers import get_notifier
-import imgkit
-from pygments.formatters import HtmlFormatter
 
 
-logging.getLogger("yfpy.query").setLevel(logging.INFO)
-logging.getLogger("sportradar").setLevel(logging.WARNING)
-logging.getLogger("notifiers.core").setLevel(logging.INFO)
+logging.disable(sys.maxsize) # Python 3
 
-game_week = ''
-managers = list()
+# logger = logging.getLogger("YahooFantasySportsQuery")
+# logger.disabled = True
 
-
-def get_current_week():
-    global game_week
-    league_info = yf.get_league_info()
-    game_week = int(league_info.current_week)
+# logger = logging.getLogger('schedule_check')
+# logger
+# (level=logging.info)
+# logging.debug('Script has started.')
 
 
-def assign_pos_values(player):
-    """
-    Takes Player object, returns value
-    :param player: Player object
-    :type player: yfpy.models.Player
-    :return: Player value
-    :rtype: float
-    """
-    pos_values = {
-        'QB': 1,
-        'RB': 1,
-        'WR': 1,
-        'TE': 1,
-        'DEF': 1,
-        'K': 1,
-        'D': 0,
-    }
-    player_pos = player.primary_position
-    # if player.is_undroppable == '1':
-    #     return round(pos_values.get(player_pos) * 1.5, 1)
-    # else:
-    #     return pos_values.get(player_pos)
-    return pos_values.get(player_pos)
-
-
-def get_multiple_manager_rosters(manager_ids):
-    """
-    Returns multiple manager rosters in list of dictionaries
-
-    :param manager_ids: team_id
-    :type manager_ids: list
-    :return: list of manager player dictionaries
-    :rtype: list
-    """
-    rosters = list()
-    for manager_id in manager_ids:
-        try:
-            roster_dict = get_manager_roster(manager_id=manager_id)
-            rosters.append(roster_dict)
-        except Exception as e:
-            print("Error: {}".format(e))
-
-    return rosters
-
-
-def get_manager_roster(manager_id):
-    """
-    Returns manager roster dictionary.
-
-    Ex: {
-    'manager': 'Mark',
-    'players', ['player1_dict',
-                'player2_dict']
-    }
-
-    :param manager_id: team_id
-    :type manager_id: int
-    :return: manager roster dictionary
-    :rtype: dict
-    """
+def get_roster_players(team_id_list):
     global game_week
     global managers
+    pos_values = {
+        'QB': 1.0,
+        'RB': 1.0,
+        'WR': 1.0,
+        'TE': 1.0,
+        'DEF': 1.0,
+        'K': 1.0,
+        'D': 0.5,
+    }
 
-    # Load roster info; returns a list of Player objects
-    players = yf.get_team_roster_player_info_by_week(team_id=manager_id)
-    manager_player_dict = dict()
+    all_manager_players = list()
+    for team_id in team_id_list:
+        # Load team info; returns a Team object
+        manager_info = yf.get_team_info(team_id=team_id)
 
-    # Get manager name
-    manager_name = get_manager_name(manager_id)
-    managers.append(manager_name)
-    manager_player_dict['manager'] = manager_name
+        # Get manager name
+        manager_name = get_manager_name(manager_info)
+        managers.append(manager_name)
 
-    manager_player_list = list()
-    for player in players:
-        player = player['player']
-        roster_pos = player.selected_position_value  # Position in team's roster
-        if roster_pos not in ['BN', 'D']:
-            player_value = assign_pos_values(player)
-            player_dict = {
-                'name': player.name.full,
-                'team_name': player.editorial_team_full_name,
-                'team_abbr': player.editorial_team_abbr,
-                'pos': player.primary_position,
-                'player_value': player_value,
-            }
-            manager_player_list.append(player_dict)
-    manager_player_dict['players'] = manager_player_list
-    return manager_player_dict
+        # Set current game_week
+        update_current_week(manager_info)
+
+        # Load roster info; returns a list of Player objects
+        players = yf.get_team_roster_player_info_by_week(team_id=team_id)
+        manager_player_dict = dict()
+        manager_player_dict['manager'] = manager_name
+        manager_player_list = list()
+        for player in players:
+            player = player['player']
+            player_pos = player.primary_position
+            roster_pos = player.selected_position_value  # Position in team's roster
+            if roster_pos != 'BN':
+                if player.is_undroppable == '1':
+                    player_value = round(pos_values.get(player_pos) * 1.5, 1)
+                    # is_undroppable = True
+                else:
+                    player_value = pos_values.get(player_pos)
+                    # is_undroppable = False
+                player_dict = {
+                    'name': player.name.full,
+                    'team_name': player.editorial_team_full_name,
+                    'team_abbr': player.editorial_team_abbr,
+                    'pos': player.primary_position,
+                    'player_value': player_value,
+                    # 'is_undroppable': is_undroppable
+                    # 'manager': manager_name
+                }
+                manager_player_list.append(player_dict)
+        manager_player_dict['players'] = manager_player_list
+        all_manager_players.append(manager_player_dict)
+
+    return all_manager_players
 
 
-def get_manager_name(manager_id):
-    """
-    Returns manager name from a team object.
-
-    :param manager_id: team_id
-    :type team_obj: int
-    :return: Manager's nickname
-    :rtype: str
-    """
-    # Get yfpy.models.Team object
-    manager_info = yf.get_team_info(team_id=manager_id)
-    all_managers = manager_info.managers
+def get_manager_name(team_obj):
+    all_managers = team_obj.managers
     manager = all_managers['manager']
     manager_name = manager.nickname
     manager_name = manager_name.split(' ')[0]
     if manager_name == '--':
-        manager_name = 'John'
+        manager_name = 'Deric\'s Dad'
     return manager_name
 
 
+def update_current_week(team_obj):
+    global game_week
+    for match in team_obj.matchups:
+        match = match['matchup']
+        if match.status == 'midevent':
+            game_week = str(match.week)
+
+
 def get_weekly_schedule(week):
-    """
-    Return weekly schedule from SportRadar API.
+    SR_api_key = "8ud4engmjwxzk9gw7up653j8"
+    nfl = NFL.NFL(SR_api_key)
+    game_list = nfl.get_weekly_schedule(year=2020, nfl_season='REG', nfl_season_week=week).json()
 
-    :param week: NFL schedule week
-    :type week: int
-    :return: List of game dictionaries
-    :rtype: list
-    """
-    api_key = "8ud4engmjwxzk9gw7up653j8"
-    SR_url = f'http://api.sportradar.us/nfl/official/trial/v6/en/games' \
-             f'/2020/REG/{week}/schedule.json?api_key={api_key}'
-    games = requests.get(SR_url).json()
+    assert (int(game_list['week']['title']) == int(game_week)), "Week from SportsRadar doesn't match Yahoo"
 
-    game_list = games['week']['games']
+    game_list = game_list['week']['games']
+
     game_dict_list = list()
     for item in game_list:
         game_dict = dict()
@@ -177,16 +125,6 @@ def get_weekly_schedule(week):
 
 
 def assign_players_to_games(week_games, manager_player_list):
-    """
-    Assigns managers players to games by team.
-
-    :param week_games: List of games from SportsRadar API
-    :type week_games: list
-    :param manager_player_list: List of players from each manager's roster
-    :type manager_player_list: list
-    :return: List of games with players assigned to them
-    :rtype: list
-    """
     for week_game in week_games:
         for manager in manager_player_list:
             manager_name = manager['manager']
@@ -199,7 +137,7 @@ def assign_players_to_games(week_games, manager_player_list):
     return week_games
 
 
-def sum_player_values(week_games: list) -> list:
+def sum_player_values(week_games):
     for week_game in week_games:
         total_value = list()
         for manager in managers:
@@ -209,27 +147,22 @@ def sum_player_values(week_games: list) -> list:
                 week_game[manager] = manager_value
                 total_value.append(manager_value)
             else:
-                week_game[manager] = 0
+                week_game[manager] = float(0.0)
         week_game['Total'] = sum(total_value)
     return week_games
 
 
 def sort_game_list(week_games):
-    """
-    Return list of weekly games sorted by game_time and total value.
-
-    :param week_games: List of NFL game dictionaries
-    :type week_games: list
-    :return: Sorted list of SportsRadar games
-    :rtype: list
-    """
     return sorted(week_games, key=lambda k: (k['game_time'], -k['Total']))
 
 
-def create_and_print_table(game_list):
+def create_print_table(game_list):
     x = PrettyTable()
     first_fields = ['Game Time', 'Match', 'Channel']
     x.field_names = [*first_fields, *managers, 'Total']
+    x.align['Game Time'] = 'l'
+    x.align['Channel'] = 'c'
+    x.align['Match'] = 'l'
 
     for item in game_list:
         match = item['away_abbr'] + ' vs. ' + item['home_abbr']
@@ -244,34 +177,7 @@ def create_and_print_table(game_list):
         row.append(item['Total'])
         if game_time > arrow.now():
             x.add_row(row)
-
-    # print(x)
-    return x.get_html_string()
-
-
-def convert_to_markdown(html):
-    return html2markdown.convert(html)
-
-
-def send_with_pushbullet(body):
-    access_token = 'o.jsROdhjhdzgGs6RBlEckp2dgifwU1Ke6'
-    obj = Apprise.instantiate(f'pbul://{access_token}/?format=html')
-    obj.notify(title='Schedule Breakdown', body=body)
-
-
-def send_with_pushover(body):
-    options = {
-        'format': 'png',
-        'crop-w': '400',
-    }
-    imgkit.from_string(body, 'out.jpg', options=options)
-
-    PUSHOVER_USER_KEY = 'uJB6YmsCNkb76mhouohPmYwXDw54V6'
-    PUSHOVER_TOKEN = 'astxh7puz1chu9yk3wtd2pqp6fjowy'
-    pushover = get_notifier('pushover')
-    pushover.notify(token=PUSHOVER_TOKEN, user=PUSHOVER_USER_KEY,
-                    message='This week', title='Schedule Breakdown',
-                    device='iPhone', attachment='out.jpg')
+    return x
 
 
 if __name__ == "__main__":
@@ -281,7 +187,9 @@ if __name__ == "__main__":
     game_id = "399"
     game_code = "nfl"
     all_output_as_json = False
-    team_IDs = [3, 4]  # 3 = Mark, 4 = Lauren
+    game_week = 3
+    managers = list()
+    team_IDs = [3, 4]  # '1', '9']  # 3 = Mark, 4 = Lauren
     # team_IDs = range(1, 11)
     yf = YahooFantasySportsQuery(auth_dir=auth_dir,
                                  league_id=league_id,
@@ -289,23 +197,21 @@ if __name__ == "__main__":
                                  game_code=game_code,
                                  all_output_as_json=all_output_as_json)
 
-    # Update game_week to current week
-    get_current_week()
+    # Fetch and combine rosters by team using yfpy
+    all_players = get_roster_players(team_IDs)
 
-    # Assign players to current week's games
-    weekly_games = assign_players_to_games(week_games=get_weekly_schedule(),
-                                           manager_player_list=get_multiple_manager_rosters(team_IDs))
+    # Fetch weekly NFL scheduled
+    weekly_games = get_weekly_schedule(week=game_week)
+
+    # Assign player position values, sum by team
+    weekly_games = assign_players_to_games(week_games=weekly_games, manager_player_list=all_players)
 
     # Sum player values by Manager
     weekly_games = sum_player_values(weekly_games)
 
     # Sort list of games by game_time ASC, values DESC
-    sorted_weekly_games = sort_game_list(weekly_games)
+    weekly_games = sort_game_list(weekly_games)
 
     # Use PrettyTable to print table of game times
-    html = create_and_print_table(sorted_weekly_games)
-    print("HTML\n\n" + html)
-    # markdown = html2markdown.convert(html)
-    # print('MARKDOWN\n\n' + markdown)
-
-    send_with_pushover(html)
+    table = create_print_table(weekly_games)
+    print(table)
